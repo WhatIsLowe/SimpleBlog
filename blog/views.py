@@ -1,7 +1,9 @@
+from django.core.mail import send_mail
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, HttpResponsePermanentRedirect
 from django.views.generic import ListView
-from .models import Post
+from .forms import EmailPostForm, CommentForm
+from .models import Post, Comment
 
 
 class PostListView(ListView):       # Аналог функции post_list
@@ -29,4 +31,49 @@ class PostListView(ListView):       # Аналог функции post_list
 def post_detail(request, day, month, year, post):
     post = get_object_or_404(Post, slug=post, status='published', publish__year=year,
                              publish__month=month, publish__day=day)
-    return render(request, 'blog/post/detail.html', {'post': post})
+
+    # Список активных комментариев
+    comments = post.comments.filter(active=True)
+    new_comment = None
+    if request.method == 'POST':
+        # Пользователь отправил комментарий
+        comment_form = CommentForm(data=request.POST)
+        if comment_form.is_valid():
+            # Создаем комментарий, но не сохранем его
+            new_comment = comment_form.save(commit=False)
+            # Привязываем комментарий к статье
+            new_comment.post = post
+            # Сохраняем комментарий в базе данных
+            new_comment.save()
+            return HttpResponsePermanentRedirect('/blog/')      # Добавить пересылку на эту же статью!!
+    else:
+        comment_form = CommentForm()
+    return render(request, 'blog/post/detail.html', {'post': post, 'comments': comments,
+                                                     'new_comment': new_comment,
+                                                     'comment_form': comment_form})
+
+
+# Отправка статьи по почте
+def post_share(request, post_id):
+    # Получение данных статьи по идентификатору.
+    post = get_object_or_404(Post, id=post_id, status='published')
+    sent = False
+    if request.method == 'POST':
+        # Форма была отправлена на сохранение
+        form = EmailPostForm(request.POST)
+        if form.is_valid():
+            # Все поля формы прошли проверку.
+            cd = form.cleaned_data
+            # ... Отправка электронной почты.
+            post_url = request.build_absolute_uri(post.get_absolute_url())
+            subject = '{} ({}) recommends you reading "{}"'.format(cd['name'],
+                                                                   cd['email'],
+                                                                   post.title)
+            message = 'Read "{}" at {}\n\n{}\'s comments:' \
+                      '{}'.format(post.title, post_url, cd['name'], cd['comments'])
+            send_mail(subject, message, 'admin@blog.com', [cd['to']])
+            sent = True
+    else:
+        form = EmailPostForm()
+    return render(request, 'blog/post/share.html',
+                      {'post': post, 'form': form, 'sent': sent})
