@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.urls import reverse
+from taggit.managers import TaggableManager
 
 
 # Добавляем менеджер для получения "опубликованных" заисей
@@ -27,6 +28,9 @@ class Post(models.Model):
     # Менеджеры модели
     objects = models.Manager()      # Менеджер по-умолчанию
     published = PublishedManager()      # Наш новый менеджер
+
+    # Менеджер тэгов
+    tags = TaggableManager()
 
     class Meta:
         ordering = ('-publish',)
